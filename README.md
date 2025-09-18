@@ -130,6 +130,8 @@ Environment variables used in `.env`:
 - `SYSTEM_PROMPT`: the ReAct schema + guardrails (a sample is in `.env.example`)
 - `DEFAULT_SEARCH_RESULT`: optional default when a search returns no results
 
+Note: This repository includes a sanitized public `SYSTEM_PROMPT` in `.env.example` to demonstrate the controller contract. Proprietary prompt heuristics used in client work are intentionally omitted.
+
 ---
 
 ## Usage
