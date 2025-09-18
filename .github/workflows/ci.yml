@@ -23,10 +23,15 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install ruff==0.6.2
+          pip install pre-commit==3.8.0
 
       - name: Lint (ruff)
         run: |
           ruff check .
+
+      - name: Pre-commit (mypy, pydocstyle)
+        run: |
+          pre-commit run --all-files --show-diff-on-failure
 
       - name: Byte-compile (sanity check)
         run: |

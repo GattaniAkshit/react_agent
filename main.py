@@ -5,8 +5,8 @@ Overview:
 - Tools: `calculator(expr)` and `search(query)`.
 - Controller: prompts for one iteration per turn; injects Observations; enforces guardrails.
 
-This file also logs a detailed report to a rotating file while keeping console output
-minimal and intuitive for non-technical viewers.
+This module also writes a detailed run report to a rotating file while keeping
+console output minimal for easy reading.
 """
 
 import os
@@ -18,7 +18,7 @@ from groq import Groq
 import operator as op
 from ddgs import DDGS
 from dotenv import load_dotenv
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Callable, Union, Any
 from logging.handlers import RotatingFileHandler
 
 # Loading env vars
@@ -29,7 +29,7 @@ DEFAULT_SEARCH_RESULT = os.getenv("DEFAULT_SEARCH_RESULT")
 MODEL_ID = os.getenv("MODEL_ID")
 
 # Allowed operators
-ALLOWED_OPERATORS = {
+ALLOWED_OPERATORS: Dict[type, Callable[..., Union[int, float]]] = {
     ast.Add: op.add,
     ast.Sub: op.sub,
     ast.Mult: op.mul,
@@ -48,10 +48,11 @@ client = Groq(api_key=GROQ_API_KEY)
 #######################
 
 def _setup_logger() -> logging.Logger:
-    """Configure a rotating file logger for detailed demo reports.
+    """Configure a rotating file logger for detailed reports.
 
     Returns:
-        A configured logger instance writing to `report_log.txt` with rotation.
+        logging.Logger: Configured logger that writes to `report_log.txt` with
+            rotation enabled.
     """
     logger = logging.getLogger("agent_demo")
     logger.setLevel(logging.INFO)
@@ -71,7 +72,11 @@ LOGGER = _setup_logger()
 
 
 def _divider(title: str = "") -> None:
-    """Print a minimal section divider to console for readability."""
+    """Print a minimal section divider to console for readability.
+
+    Args:
+        title: Optional section title rendered inline with the divider.
+    """
     line = "=" * 40
     if title:
         print(f"\n{line} {title} {line}")
@@ -80,18 +85,31 @@ def _divider(title: str = "") -> None:
 
 
 def _truncate(text: str, max_len: int = 400) -> str:
+    """Truncate text to a maximum length, adding an ellipsis when shortened.
+
+    Args:
+        text: Arbitrary text to truncate; `None` is treated as an empty string.
+        max_len: Maximum output length before applying an ellipsis.
+
+    Returns:
+        str: The original text if within `max_len`, otherwise a truncated
+        string ending with `...`.
+    """
     if text is None:
         return ""
     text = str(text)
     return text if len(text) <= max_len else text[: max_len - 3] + "..."
 
 def _print_turn(turn_idx: int, raw_response: str, parsed: Dict[str, str]) -> None:
-    """Log full details to the report and print a minimal summary to console.
+    """Log the full turn to the report and print a concise console summary.
 
-    Report markers (file):
-    - [REPORT|TURN]: turn header
-    - [REPORT|RAW]: raw LLM response
-    - [REPORT|PARSED]: parsed keys and values
+    The report includes the raw LLM response and a parsed key/value view for
+    auditing.
+
+    Args:
+        turn_idx: 1-based turn index.
+        raw_response: Raw text returned by the LLM.
+        parsed: Mapping of expected schema keys to their parsed values.
     """
     # Detailed file log
     LOGGER.info("[REPORT|TURN] #%s", turn_idx)
@@ -109,13 +127,23 @@ def _print_turn(turn_idx: int, raw_response: str, parsed: Dict[str, str]) -> Non
     print(f"Has Final Answer: {final_present}")
 
 def _print_tool(tool_name: str, tool_input: str, tool_result: str) -> None:
-    """Log tool call details and print a minimal console line."""
+    """Log tool call details and print a minimal console line.
+
+    Args:
+        tool_name: Name of the tool (e.g., "search", "calculator").
+        tool_input: Input string provided to the tool.
+        tool_result: Result string returned by the tool.
+    """
     LOGGER.info("[REPORT|TOOL] name=%s input=%s", tool_name, tool_input)
     LOGGER.info("[REPORT|TOOL|RESULT] %s", tool_result)
     print(f"Tool: {tool_name} | Done")
 
-def _print_transcript(messages: List[Dict]) -> None:
-    """Write a compact transcript to the report log with unique markers."""
+def _print_transcript(messages: List[Dict[str, str]]) -> None:
+    """Write a compact transcript to the report log with unique markers.
+
+    Args:
+        messages: Conversation messages as role/content dictionaries.
+    """
     LOGGER.info("[REPORT|TRANSCRIPT|BEGIN]")
     idx = 1
     for m in messages:
@@ -128,14 +156,15 @@ def _print_transcript(messages: List[Dict]) -> None:
     LOGGER.info("[REPORT|TRANSCRIPT|END]")
 
 def search(query: str, max_results: Optional[int] = 3) -> str:
-    """Call DuckDuckGo API and aggregate top results into a concise Observation.
+    """Aggregate top DuckDuckGo results into a concise Observation string.
 
     Args:
-        query: search query (str)
-        max_results: optional to limit results retrieved (default: 3)
+        query: Search query string.
+        max_results: Maximum number of results to aggregate.
 
     Returns:
-        str: aggregated search summary including titles, snippets, and urls (when available)
+        str: Aggregated summary containing titles, snippets, and URLs when
+        available.
     """
     LOGGER.info("[REPORT|TOOL|ENTER] search query=%s", query)
     try:
@@ -174,23 +203,40 @@ def search(query: str, max_results: Optional[int] = 3) -> str:
 
 
 def calculator(expr: str) -> str:
-    """Safely evaluate a basic arithmetic expression and return the result as string.
+    """Safely evaluate a basic arithmetic expression.
 
-    Supports +, -, *, /, ** and unary - using a safe AST evaluation with a
-    restricted operator set defined in `ALLOWED_OPERATORS`.
+    Supports `+`, `-`, `*`, `/`, `**` and unary `-` using a safe AST evaluation
+    with a restricted operator set.
+
+    Args:
+        expr: Arithmetic expression to evaluate.
+
+    Returns:
+        str: Result of the evaluation serialized as a string.
+
+    Raises:
+        ValueError: If the expression contains unsupported operators or nodes.
     """
     LOGGER.info("[REPORT|TOOL|ENTER] calculator expr=%s", expr)
-    def _eval(node):
-        if isinstance(node, ast.Constant): # numbers
-            return node.value
-        elif isinstance(node, ast.BinOp): # binary operations (e.g., 2+3)
-            if type(node.op) not in ALLOWED_OPERATORS:
+    def _eval(node: ast.AST) -> Union[int, float]:
+        if isinstance(node, ast.Constant):  # numbers only
+            val: Any = node.value
+            if isinstance(val, (int, float)):
+                return val
+            raise ValueError("Unsupported constant type")
+        elif isinstance(node, ast.BinOp):  # binary operations (e.g., 2+3)
+            op_fn = ALLOWED_OPERATORS.get(type(node.op))
+            if op_fn is None:
                 raise ValueError("Unsupported operator")
-            return ALLOWED_OPERATORS[type(node.op)](_eval(node.left), _eval(node.right))
-        elif isinstance(node, ast.UnaryOp): # unary operations (e.g. -3)
-            if type(node.op) not in ALLOWED_OPERATORS:
+            left = _eval(node.left)
+            right = _eval(node.right)
+            return op_fn(left, right)
+        elif isinstance(node, ast.UnaryOp):  # unary operations (e.g. -3)
+            op_fn = ALLOWED_OPERATORS.get(type(node.op))
+            if op_fn is None:
                 raise ValueError("Unsupported unary operator")
-            return ALLOWED_OPERATORS[type(node.op)](_eval(node.operand))
+            operand = _eval(node.operand)
+            return op_fn(operand)
         else:
             raise ValueError("Unsupported expression")
     
@@ -200,21 +246,25 @@ def calculator(expr: str) -> str:
     return result
 
 
-def chat(messages: List[Dict]) -> str:
-    """Helper to interact with LLM with basic 429 retry/backoff.
+def chat(messages: List[Dict[str, str]]) -> str:
+    """Call the LLM with basic retry/backoff handling.
 
     Args:
-        messages: list of dictionaries holding the interaction with the llm
+        messages: Conversation messages as role/content dictionaries.
 
     Returns:
-        response: react agent response
+        str: Model response content (empty string if none returned).
+
+    Raises:
+        Exception: Propagates the last exception if all retry attempts fail.
     """
     # Basic retry with backoff to handle transient rate limits (429)
     last_err = None
     for attempt in range(3):
         try:
             response_object = client.chat.completions.create(model=MODEL_ID, messages=messages)
-            response = response_object.choices[0].message.content if response_object.choices[0].message.content is not None else ""
+            content = response_object.choices[0].message.content
+            response = str(content or "")
             LOGGER.info("[REPORT|LLM|OK] chars=%d", len(response))
             return response
         except Exception as e:
@@ -226,18 +276,27 @@ def chat(messages: List[Dict]) -> str:
     if last_err is not None:
         LOGGER.error("[REPORT|LLM|ERROR] %s", str(last_err))
         raise last_err
+    # Fallback to satisfy type checker; normally unreachable
+    return ""
 
 # Tool name to tool call map
-TOOL_NAME_MAP = {
+TOOL_NAME_MAP: Dict[str, Callable[[str], str]] = {
     "calculator": calculator,
     "search": search
 }
 
-def parse_response(resp: str) -> dict:
-    """Parse the LLM response lines into the expected key/value block.
+def parse_response(resp: str) -> Dict[str, str]:
+    """Parse an LLM response into the 5-key schema.
 
-    Be forgiving with common key variants; prefer keeping the first non-empty
-    value for each key to avoid clobbering by later repeats.
+    The parser is forgiving with common key variants and keeps the first
+    non-empty value per key to avoid clobbering by later repeats.
+
+    Args:
+        resp: Raw LLM response text.
+
+    Returns:
+        dict: Mapping with keys `Thought`, `Action`, `Action input`,
+        `Observation`, and `Final Answer`.
     """
     parsed = {k: '' for k in EXPECTED_KEYS}
     key_map = {
@@ -279,16 +338,15 @@ def parse_response(resp: str) -> dict:
 #######################
 
 def main() -> None:
-    """Entry point for the demo app flow.
+    """Run the demo agent end-to-end.
 
     Flow:
     1) Seed messages with system prompt and user query.
-    2) Loop until Final Answer or `max_turns`.
-    3) On Action, run the tool and append an Observation.
-    4) Apply guardrails and provide corrective feedback when needed.
+    2) Loop until a Final Answer or `max_turns` is reached.
+    3) On `Action`, execute the tool and append an Observation.
+    4) Apply guardrails to steer toward finalization.
 
-    Console output: minimal, narrative flow.
-    Log file (report_log.txt): detailed, structured with unique markers.
+    Console output is concise; `report_log.txt` contains a structured report.
     """
     parser = argparse.ArgumentParser(description="ReAct agent simple demo")
 

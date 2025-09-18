@@ -34,36 +34,30 @@ Run with Python 3.10+.
 
 ```bash
 $ python main.py "What is the population of Germany?"
-
 ======================================== Turn 1 ========================================
 Thought: I should use the search tool to retrieve Germany's population.
 Action: search
 Has Final Answer: No
 Tool: search | Done
-
 ======================================== Turn 2 ========================================
 Thought: I see that I was provided the detailed information about Germany, but the answer to the question was asked: "What is the population of Ge...
-Action: 
+Action:
 Has Final Answer: Yes
-
 ======================================== Final Answer ========================================
 83,577,140
 ```
 
 ```bash
 $ python main.py "What is 25*49/2?"
-
 ======================================== Turn 1 ========================================
 Thought: I should calculate 25*49/2 using the calculator.
 Action: calculator
 Has Final Answer: No
 Tool: calculator | Done
-
 ======================================== Turn 2 ========================================
 Thought: The observation, 612.5, is the result of the calculation.
 Action:
 Has Final Answer: Yes
-
 ======================================== Final Answer ========================================
 612.5
 ```
