@@ -12,14 +12,13 @@ minimal and intuitive for non-technical viewers.
 import os
 import ast
 import time
+import logging
 import argparse
 from groq import Groq
 import operator as op
-from functools import reduce
-from dotenv import load_dotenv
 from ddgs import DDGS
+from dotenv import load_dotenv
 from typing import Dict, List, Optional
-import logging
 from logging.handlers import RotatingFileHandler
 
 # Loading env vars
