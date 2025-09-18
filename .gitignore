@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# Virtual envs
+.venv/
+venv/
+ENV/
+
+# Editors/IDE
+.vscode/
+.idea/
+*.code-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local config and secrets
+.env
+.env.*
+
+# Logs & reports
+report_log.txt
+logs/
+*.log
+
+# Caches
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Node (if ever used for UI experiments)
+node_modules/
